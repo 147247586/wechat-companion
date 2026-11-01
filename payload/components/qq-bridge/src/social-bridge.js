@@ -75,7 +75,8 @@ const engine = new SocialEngine({ buffer,connection, roleFor: key => personaFor(
   personaNameFor: key => personaFor(key).personaName,workModeFor,assistantControl:(key,action,message,command)=>plugin.assistantTask(key,action,{...command,senderWxid:verifiedAssistantSender(message)}),assistantAccess:(key,message)=>assistantSenderAllowed((config.search_policy_file?JSON.parse(fs.readFileSync(config.search_policy_file,'utf8').replace(/^\uFEFF/,'' )).wechat:wechat),key,verifiedAssistantSender(message)),
   wakeWords: wechat.wake_words ?? [],
   mode: wechat.wake_mode ?? 'hybrid',modeFor, batchMs: config.social?.batch_ms ?? 3000,
-  privateBatchMs: config.social?.private_batch_ms ?? 7000,
+  privateBatchMs: config.social?.private_batch_ms ?? 2500,
+  privateImageBatchMs: config.social?.private_image_batch_ms ?? 4000,
   minIntervalMs: config.social?.min_interval_ms ?? 15000,
   privateMinIntervalMs: config.social?.private_min_interval_ms ?? 1000,
   maxPerMinute: config.social?.max_per_minute ?? 3,
@@ -161,3 +162,4 @@ const contextTimer = setInterval(() => void contextMaintenance.tick(), 30000); v
 const stop = async () => { voiceIngress.stop(); clearInterval(contextTimer);contextMaintenance.stop();clearInterval(proactiveTimer);noticeDelivery.stop();clearInterval(replayTimer);clearInterval(assistantNoticeTimer); connection.stop();memberConnection.stop();engine.stop();memberEngine.stop(); await adapter.stop(); historyStore.close(); process.exit(0); };
 process.once('SIGINT', () => void stop());
 process.once('SIGTERM', () => void stop());
+

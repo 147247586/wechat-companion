@@ -3,7 +3,7 @@
 > 给 WeChatAgent 用的微信陪伴层：图片记忆、主动回忆、语音回复、唱歌、入站语音。
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/147247586/wechat-companion/releases)
+[![version](https://img.shields.io/badge/version-0.2.2-blue.svg)](https://github.com/147247586/wechat-companion/releases)
 ![WeChatAgent](https://img.shields.io/badge/host-WeChatAgent-07c160)
 
 这是一个**高级向、需要本机微信环境的源码安装包**，不是标准 DSH 一键插件。
@@ -29,7 +29,7 @@ WeChat Companion 把这些能力放到 Bridge 侧：
 
 ## 消息节奏
 
-- 私聊连续消息使用 **7 秒合并窗口**：图片 + 紧接着的文字会进入同一轮；
+- 私聊纯文字使用 **2.5 秒合并窗口**；图片使用 **4 秒合并窗口**，图片后 4 秒内的文字会进入同一轮；
 - 一次回复最多 **4 条**，避免碎片刷屏；
 - 自动语音只在**整轮只有一条回复**时触发，避免文字已经发完后语音才补一句；
 - 语音入队记为 `submitted`，不把尚未发出的语音伪装成 `confirmed`。
@@ -244,3 +244,4 @@ WeChatAgent 相关源码与可选扩展遵循其各自许可；使用前请确�
 
 - 通用记忆内核：https://github.com/147247586/dsh-companion-memory
 - WeChatAgent：本机安装
+

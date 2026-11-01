@@ -113,11 +113,11 @@ export function replyCooldown(recent, now, { intervalMs, maxPerMinute, maxPerTen
 /** Batched social decisions; one in-flight decision per conversation. */
 export class SocialEngine {
   constructor({ buffer, decide, send, roleFor = () => '', personaNameFor = () => '',workModeFor=()=> 'social', wakeWords = [], mode = 'hybrid',
-    assistantBatchMs=650,assistantChatOnly=false,maxTextPartsFor=()=>2,notebookEnabledFor=()=>false,batchMs = 3000, privateBatchMs = 3000, minIntervalMs = 15000, privateMinIntervalMs = 1000,
+    assistantBatchMs=650,assistantChatOnly=false,maxTextPartsFor=()=>2,notebookEnabledFor=()=>false,batchMs = 3000, privateBatchMs = 2500, privateImageBatchMs = 7000, minIntervalMs = 15000, privateMinIntervalMs = 1000,
     maxPerMinute = 3, maxPerTenMinutes = 10, stickerChoicesFor = async()=>[], sendSticker,
     stickerPolicyFor=()=>({enabled:true,labelCache:true}),stickerLabelsFor=async()=>[],saveStickerLabels=async()=>{},
     assistantAccess=()=>false,assistantControl,modeFor,searchFor=async()=>null,modelSearchReady=async()=>false,searchPolicyFor=()=>SEARCH_DEFAULTS,stickerSelect=selectStickerChoices,deliveryRetry={},connection=null,log = () => {} }) {
-    Object.assign(this, { buffer, decide, send, roleFor, personaNameFor,workModeFor, wakeWords, mode, batchMs, privateBatchMs,
+    Object.assign(this, { buffer, decide, send, roleFor, personaNameFor,workModeFor, wakeWords, mode, batchMs, privateBatchMs, privateImageBatchMs,
       minIntervalMs, privateMinIntervalMs, maxPerMinute, maxPerTenMinutes, log });
     if (![maxPerMinute,maxPerTenMinutes].every(value => Number.isSafeInteger(value) && value > 0)) throw new TypeError('Reply quotas must be positive integers');
     this.connection=connection;if(connection)connection.onBoundary=()=>this.suspendConnection();
@@ -224,10 +224,11 @@ export class SocialEngine {
     }
     if (direct) {
       if (message.kind === 'private') {
+        const wait = Array.isArray(message.images) && message.images.length ? this.privateImageBatchMs : this.privateBatchMs;
         clearTimeout(this.timers.get(key));
         this.timers.set(key, setTimeout(() => {
           this.timers.delete(key); void this.#run(key, message, true);
-        }, this.privateBatchMs));
+        }, wait));
         return;
       }
       clearTimeout(this.timers.get(key)); this.timers.delete(key); void this.#run(key, message, true);
