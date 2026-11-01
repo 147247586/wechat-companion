@@ -1,0 +1,13 @@
+backups/
+tmp-*/
+data/
+state/
+*.log
+*.sqlite
+*.sqlite-*
+token*
+*.key
+*.wav
+*.mp3
+*.silk
+node_modules/

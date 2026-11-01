@@ -1,0 +1,22 @@
+{
+  "name": "wechat-companion",
+  "version": "0.2.0",
+  "private": false,
+  "description": "WeChatAgent companion layer: images, proactive recall, voice, local ASR. Requires WeChatAgent + Bridge login.",
+  "requires": {
+    "wechatagent": ">=0.4.1",
+    "dshPluginApi": 2,
+    "wechatHook": "4.1.10.27+",
+    "ollama": [
+      "qwen2.5vl:3b",
+      "bge-m3"
+    ],
+    "sherpaOnnx": ">=2.0",
+    "localAsrPort": 11231
+  },
+  "components": {
+    "bridge": "components/qq-bridge",
+    "dshPlugin": "packages/dsh-social-bridge-plugin",
+    "imageWorker": "media-caption-worker.mjs"
+  }
+}

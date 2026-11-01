@@ -1,0 +1,12 @@
+{
+  "workspace": "D:\\wechatagent\\data\\workspace",
+  "appProject": "D:\\wechatagent\\app\\resources\\project",
+  "dshHealth": "http://127.0.0.1:11230/health",
+  "readerConfig": "state/wechat-io-config.json",
+  "bridgeToken": "state/social-dsh-token.txt",
+  "imageModel": "qwen2.5vl:3b",
+  "voiceConfig": "",
+  "voiceRef": "",
+  "localAsrModel": "D:\\voice-svc\\asr\\sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+  "localAsrPython": "D:\\Python\\python.exe"
+}
