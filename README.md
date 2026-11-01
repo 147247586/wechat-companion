@@ -3,7 +3,7 @@
 > 给 WeChatAgent 用的微信陪伴层：图片记忆、主动回忆、语音回复、唱歌、入站语音。
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/147247586/wechat-companion/releases)
+[![version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/147247586/wechat-companion/releases)
 ![WeChatAgent](https://img.shields.io/badge/host-WeChatAgent-07c160)
 
 这是一个**高级向、需要本机微信环境的源码安装包**，不是标准 DSH 一键插件。
@@ -26,6 +26,13 @@ WeChat Companion 把这些能力放到 Bridge 侧：
 | 唱歌 | 预渲染歌曲队列 |
 | 入站语音 | Reader + speech-recognition + 本地 SenseVoice |
 | 记忆/心情 | 配套 `dsh-companion-memory` 内核 |
+
+## 消息节奏
+
+- 私聊连续消息使用 **7 秒合并窗口**：图片 + 紧接着的文字会进入同一轮；
+- 一次回复最多 **4 条**，避免碎片刷屏；
+- 自动语音只在**整轮只有一条回复**时触发，避免文字已经发完后语音才补一句；
+- 语音入队记为 `submitted`，不把尚未发出的语音伪装成 `confirmed`。
 
 ## 架构
 
@@ -77,7 +84,8 @@ social-bridge (this repo)
 - Python 3.11+（入站语音）；
 - 图片记忆需要 Ollama + `qwen2.5vl:3b`；
 - 入站语音需要 WeChatAgent 可选插件 `speech-recognition`；
-- 语音发送需要你自己的本机 voice worker、音色参考和 `voice_config.json`。
+- 语音发送需要你自己的本机 voice worker、音色参考和 `voice_config.json`；
+- 自动语音需要 voice worker 写入 `state/voice-health.json`；缺少健康标记时只保留显式语音。
 
 ## 不包含
 
@@ -205,6 +213,7 @@ node verify.mjs
 - 不同 WeChatAgent 版本可能改协议；
 - 入站语音依赖 Reader + speech-recognition，缺少任一都会退回“未能识别”占位；
 - 语音发送依赖本机 UI 自动化，升级微信可能失效；
+- 自动语音需要本机 voice worker 与 health 标记；没有时只能显式发语音；
 - 图片 caption 质量取决于本地视觉模型；
 - 0.x 版本接口可能调整。
 

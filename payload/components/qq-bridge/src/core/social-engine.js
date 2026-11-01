@@ -113,11 +113,11 @@ export function replyCooldown(recent, now, { intervalMs, maxPerMinute, maxPerTen
 /** Batched social decisions; one in-flight decision per conversation. */
 export class SocialEngine {
   constructor({ buffer, decide, send, roleFor = () => '', personaNameFor = () => '',workModeFor=()=> 'social', wakeWords = [], mode = 'hybrid',
-    assistantBatchMs=650,assistantChatOnly=false,maxTextPartsFor=()=>2,notebookEnabledFor=()=>false,batchMs = 3000, minIntervalMs = 15000, privateMinIntervalMs = 1000,
+    assistantBatchMs=650,assistantChatOnly=false,maxTextPartsFor=()=>2,notebookEnabledFor=()=>false,batchMs = 3000, privateBatchMs = 3000, minIntervalMs = 15000, privateMinIntervalMs = 1000,
     maxPerMinute = 3, maxPerTenMinutes = 10, stickerChoicesFor = async()=>[], sendSticker,
     stickerPolicyFor=()=>({enabled:true,labelCache:true}),stickerLabelsFor=async()=>[],saveStickerLabels=async()=>{},
     assistantAccess=()=>false,assistantControl,modeFor,searchFor=async()=>null,modelSearchReady=async()=>false,searchPolicyFor=()=>SEARCH_DEFAULTS,stickerSelect=selectStickerChoices,deliveryRetry={},connection=null,log = () => {} }) {
-    Object.assign(this, { buffer, decide, send, roleFor, personaNameFor,workModeFor, wakeWords, mode, batchMs,
+    Object.assign(this, { buffer, decide, send, roleFor, personaNameFor,workModeFor, wakeWords, mode, batchMs, privateBatchMs,
       minIntervalMs, privateMinIntervalMs, maxPerMinute, maxPerTenMinutes, log });
     if (![maxPerMinute,maxPerTenMinutes].every(value => Number.isSafeInteger(value) && value > 0)) throw new TypeError('Reply quotas must be positive integers');
     this.connection=connection;if(connection)connection.onBoundary=()=>this.suspendConnection();
@@ -222,7 +222,16 @@ export class SocialEngine {
       if(!this.timers.has(key))this.timers.set(key,setTimeout(()=>{this.timers.delete(key);this.pendingDirect.delete(key);void this.#run(key,message,true);},this.assistantBatchMs));
       return;
     }
-    if (direct) { clearTimeout(this.timers.get(key)); this.timers.delete(key); void this.#run(key, message, true); }
+    if (direct) {
+      if (message.kind === 'private') {
+        clearTimeout(this.timers.get(key));
+        this.timers.set(key, setTimeout(() => {
+          this.timers.delete(key); void this.#run(key, message, true);
+        }, this.privateBatchMs));
+        return;
+      }
+      clearTimeout(this.timers.get(key)); this.timers.delete(key); void this.#run(key, message, true);
+    }
     else if (!this.timers.has(key)) this.timers.set(key, setTimeout(() => {
       this.timers.delete(key); void this.#run(key, message, false);
     }, this.batchMs));
@@ -506,7 +515,7 @@ export class SocialEngine {
       const before=part.state;part.state='sending';delete part.retryAt;persist();
       let delivery;
       try{
-        delivery=await boundedTask(()=>this.send(target,part.text,{deliveryId:part.deliveryId}),{timeoutMs:15000,code:'TEXT_DELIVERY_TIMEOUT'});
+        delivery=await boundedTask(()=>this.send(target,part.text,{deliveryId:part.deliveryId,allowAutoVoice:pending.parts.length===1}),{timeoutMs:15000,code:'TEXT_DELIVERY_TIMEOUT'});
       }catch(error){
         if(error.code==='TEXT_DELIVERY_TIMEOUT'||/^OneBot action timeout:/.test(error.message??'')){
           part.state='unconfirmed';
@@ -537,11 +546,12 @@ export class SocialEngine {
         delivery={delivered:'unconfirmed'};
       }
       const existing=this.buffer.recent(key,this.buffer.maxPerChat).some(row=>row.outgoing&&row.delivery_id===part.deliveryId);
+      const voiceQueued=delivery?.delivered==='voice-queue';
       const confirmed=delivery?.delivered!=='unconfirmed',sentAt=Date.now();
       part.state=confirmed?'confirmed':part.stickerId?'submitted':'unconfirmed';persist();
-      this.buffer.recordReplyPart(key,{deliveryId:part.deliveryId},{...target,sender_id:target.self_id,text:part.stickerId?(confirmed?'[已发送微信原生表情包]':'[微信原生表情已提交，送达待确认]'):part.text,timestamp:sentAt/1000,delivery_status:confirmed?'confirmed':'unconfirmed',...(part.stickerId?{sticker_id:part.stickerId}:{})});
+      this.buffer.recordReplyPart(key,{deliveryId:part.deliveryId},{...target,sender_id:target.self_id,text:part.stickerId?(confirmed?'[已发送微信原生表情包]':'[微信原生表情已提交，送达待确认]'):part.text,timestamp:sentAt/1000,delivery_status:voiceQueued?'submitted':confirmed?'confirmed':'unconfirmed',...(part.stickerId?{sticker_id:part.stickerId}:{})});
       if(!existing)this.noteOutgoing(key,sentAt);
-      this.log(`[Social] ${key} delivery=${confirmed?'confirmed':'unconfirmed'} part=${index+1} operation=${part.deliveryId.slice(0,12)}`);
+      this.log(`[Social] ${key} delivery=${voiceQueued?'voice-queued':confirmed?'confirmed':'unconfirmed'} part=${index+1} operation=${part.deliveryId.slice(0,12)}`);
       if(!confirmed){
         if(!part.stickerId)return finish(pending.parts.length===2&&index===0?'本机上一轮分条回复的第一条发送未确认，第二条没有发送（文字或表情）；不能把未发送部分当成已经说过的话。':'本机上一轮分条回复的第 '+(index+1)+' 条发送未确认，后续 '+(pending.parts.length-index-1)+' 条没有发送；不能把未发送部分当成已经说过的话。');
         if((part.receiptChecks??0)>=retry.maxReceiptChecks){part.state='unconfirmed';this.log(`[Social] ${key} delivery_part=${index+1} state=unconfirmed reason=receipt_timeout operation=${part.deliveryId.slice(0,12)}`);return finish('本机上一轮表情已提交，但多次核对仍未确认送达，不能当成对方已收到；不重复发送，继续回应新消息。');}
@@ -568,3 +578,4 @@ export class SocialEngine {
 
   stop() { this.stopped=true;this.media.stop();for (const timer of this.timers.values()) clearTimeout(timer); this.timers.clear(); }
 }
+

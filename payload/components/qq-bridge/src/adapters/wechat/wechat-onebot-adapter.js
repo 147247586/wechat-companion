@@ -63,6 +63,8 @@ function voiceToken(content) {
 
 // ---- 50/50 voice-vs-text ratio gate (per chat, rolling window) ----
 const VOICE_RATIO_FILE = path.join(PROJECT_ROOT, 'state', 'voice-ratio.json');
+const VOICE_LAST_FILE = path.join(PROJECT_ROOT, 'state', 'voice-last.json');
+const VOICE_HEALTH_FILE = path.join(PROJECT_ROOT, 'state', 'voice-health.json');
 const VOICE_WINDOW = 6;
 const VOICE_HALF = 3;
 
@@ -105,6 +107,46 @@ function queueVoice({ kind, target, text, emotion, deliveryId }) {
     deliveryId: deliveryId ?? '', createdAt: stamp,
   }), { mode: 0o600 });
   return file;
+}
+
+function voiceHealthy() {
+  try {
+    const info = JSON.parse(fs.readFileSync(VOICE_HEALTH_FILE, 'utf8'));
+    return info.ok === true && Date.now() - Number(info.at) < 10 * 60 * 1000;
+  } catch { return false; }
+}
+
+function voiceLastAt() {
+  try { return Number(JSON.parse(fs.readFileSync(VOICE_LAST_FILE, 'utf8')).at) || 0; } catch { return 0; }
+}
+
+function touchVoiceLast() {
+  try {
+    fs.mkdirSync(path.dirname(VOICE_LAST_FILE), { recursive: true });
+    fs.writeFileSync(VOICE_LAST_FILE, JSON.stringify({ at: Date.now() }), { mode: 0o600 });
+  } catch {}
+}
+
+// Opt-in automatic voice: the persona can still ask explicitly with `[VOICE:…]`,
+// but short, natural chat lines also get a controlled chance of becoming voice.
+function autoVoice(kind, target, text, deliveryId) {
+  const policy = voicePolicy();
+  if (!policy || policy.enabled !== true || !voiceAllowed(kind, target)) return null;
+  const value = String(text ?? '').trim();
+  const max = voiceMaxChars();
+  if (!value || value.length > max) return null;
+  if (/[\r\n]|https?:\/\/|www\.|(^|\s)[\[#>*`]/.test(value)) return null;
+  let chance = Number(policy.chance);
+  if (!Number.isFinite(chance) || chance <= 0) return null;
+  if (value.length <= 12) chance = Math.min(1, chance * 1.6);
+  else if (value.length >= 40) chance *= 0.5;
+  if (Math.random() > chance) return null;
+  const minGap = Number(policy.minGapMs ?? 60000);
+  if (minGap > 0 && Date.now() - voiceLastAt() < minGap) return null;
+  queueVoice({ kind, target, text: value, emotion: '日常', deliveryId });
+  touchVoiceLast();
+  const count = voiceRatioRecord(kind, target, true);
+  return { accepted: true, confirmed: true, delivered: 'voice-queue', mode: 'voice', emotion: '日常', ratio: count };
 }
 
 // ---- singing library: `[SING:<track>]` -> pre-rendered song as a voice bubble ----
@@ -225,7 +267,7 @@ export class WechatOneBotAdapter extends BaseAdapter {
 
   async start() { await this.server.start(); }
   async stop() { await this.server.stop(); }
-  async sendText({ kind, target, text, deliveryId, source, contextId }) {
+  async sendText({ kind, target, text, deliveryId, source, contextId, allowAutoVoice = true }) {
     if (kind !== 'private' && kind !== 'group') throw new TypeError('invalid WeChat kind');
     let content = String(text ?? '').trim();
     if (!content) throw new TypeError('empty WeChat message');
@@ -265,6 +307,16 @@ export class WechatOneBotAdapter extends BaseAdapter {
         return { accepted: true, confirmed: true, delivered: 'voice-queue', mode: 'voice', emotion: voice.emotion || '日常' };
       }
       content = speech; // voice disabled for this chat / ratio cap: degrade to plain text
+    }
+    if (allowAutoVoice && voice === null) {
+      const automatic = autoVoice(kind, id, content, deliveryId);
+      if (automatic) {
+        this.#prune(Date.now());
+        this.recentOutgoing.set(this.#fingerprint(kind, id, content), Date.now() + this.antiLoopTtlMs);
+        this.stats.sends++;
+        this.log(`[WeChat] voice_auto_queued chars=${content.length} ratio=${automatic.ratio}/${VOICE_WINDOW} operation=${String(deliveryId ?? '').slice(0, 12)}`);
+        return automatic;
+      }
     }
     // Floor is disabled: voice is only used when the model explicitly asks for it.
     voiceRatioRecord(kind, id, false);
@@ -311,3 +363,4 @@ export class WechatOneBotAdapter extends BaseAdapter {
   async reply() { throw new Error('unsupported_capability: nativeReply'); }
   getCapabilities() { return this.capabilities; }
 }
+
